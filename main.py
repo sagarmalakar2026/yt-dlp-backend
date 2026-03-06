@@ -6,6 +6,13 @@ import yt_dlp
 
 app = FastAPI()
 
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "*",
+    "Access-Control-Allow-Methods": "*",
+}
+
+# Standard CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -13,18 +20,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Catch ALL unhandled exceptions and ensure CORS headers are included
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    return JSONResponse(
-        status_code=500,
-        content={"detail": str(exc)},
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "*",
-            "Access-Control-Allow-Methods": "*",
-        },
-    )
+# Force CORS headers on ALL responses, including crashes
+@app.middleware("http")
+async def force_cors_on_every_response(request: Request, call_next):
+    if request.method == "OPTIONS":
+        return JSONResponse(content={"ok": True}, headers=CORS_HEADERS)
+
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(e)},
+            headers=CORS_HEADERS,
+        )
+
+    for k, v in CORS_HEADERS.items():
+        response.headers[k] = v
+    return response
 
 class AnalyzeRequest(BaseModel):
     url: str
@@ -39,6 +52,7 @@ def analyze(req: AnalyzeRequest):
         ydl_opts = {"quiet": True, "no_warnings": True, "skip_download": True}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(req.url, download=False)
+
         return {
             "title": info.get("title", "Unknown"),
             "thumbnail": info.get("thumbnail", ""),
@@ -60,24 +74,27 @@ def download(req: DownloadRequest):
 
         format_map = {
             "mp3": "bestaudio[ext=m4a]/bestaudio",
-            "mp4": "best[ext=mp4]/best",
+            "mp4": "best[ext=mp4]/best",  # single stream (video+audio)
         }
+
         ydl_opts = {
             "quiet": True,
             "no_warnings": True,
             "format": format_map.get(req.format, format_map["mp4"]),
             "skip_download": True,
         }
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(req.url, download=False)
-            if info.get("url"):
-                download_url = info["url"]
-            elif info.get("requested_formats"):
-                download_url = info["requested_formats"][0]["url"]
-            else:
-                raise Exception("Could not extract download URL")
 
-        return {"url": download_url}
+            if info.get("url"):
+                return {"url": info["url"]}
+
+            if info.get("requested_formats") and info["requested_formats"][0].get("url"):
+                return {"url": info["requested_formats"][0]["url"]}
+
+            raise Exception("Could not extract download URL")
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
