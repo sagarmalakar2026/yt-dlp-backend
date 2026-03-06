@@ -1,9 +1,8 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import yt_dlp
-import uuid
-import os
 
 app = FastAPI()
 
@@ -13,6 +12,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Catch ALL unhandled exceptions and ensure CORS headers are included
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Methods": "*",
+        },
+    )
 
 class AnalyzeRequest(BaseModel):
     url: str
@@ -40,11 +52,15 @@ def analyze(req: AnalyzeRequest):
 @app.post("/api/download")
 def download(req: DownloadRequest):
     try:
+        if req.format == "thumbnail":
+            ydl_opts = {"quiet": True, "no_warnings": True, "skip_download": True}
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(req.url, download=False)
+            return {"url": info.get("thumbnail", "")}
+
         format_map = {
             "mp3": "bestaudio[ext=m4a]/bestaudio",
-            "mp4": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-            "720p": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]",
-            "1080p": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]",
+            "mp4": "best[ext=mp4]/best",
         }
         ydl_opts = {
             "quiet": True,
@@ -54,14 +70,13 @@ def download(req: DownloadRequest):
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(req.url, download=False)
-            # Get the direct URL
             if info.get("url"):
                 download_url = info["url"]
             elif info.get("requested_formats"):
                 download_url = info["requested_formats"][0]["url"]
             else:
                 raise Exception("Could not extract download URL")
-        
+
         return {"url": download_url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
