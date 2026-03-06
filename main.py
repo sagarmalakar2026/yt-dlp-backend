@@ -72,9 +72,14 @@ def download(req: DownloadRequest):
                 info = ydl.extract_info(req.url, download=False)
             return {"url": info.get("thumbnail", "")}
 
-        format_map = {
-            "mp3": "bestaudio[ext=m4a]/bestaudio",
-            "mp4": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best", # single stream (video+audio)
+       format_map = {
+    "mp3": "bestaudio[ext=m4a]/bestaudio",
+    "mp4": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+    "720p": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best",
+    "1080p": "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
+    "4k": "bestvideo[height<=2160][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+    "thumbnail": None,
+}
         }
 
         ydl_opts = {
