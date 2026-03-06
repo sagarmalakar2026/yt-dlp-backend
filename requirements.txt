@@ -1,4 +1,3 @@
 fastapi
 yt-dlp
 uvicorn
-httpx
