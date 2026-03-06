@@ -74,7 +74,7 @@ def download(req: DownloadRequest):
 
         format_map = {
             "mp3": "bestaudio[ext=m4a]/bestaudio",
-            "mp4": "best[ext=mp4]/best",  # single stream (video+audio)
+            "mp4": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best", # single stream (video+audio)
         }
 
         ydl_opts = {
